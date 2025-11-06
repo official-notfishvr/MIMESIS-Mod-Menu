@@ -25,7 +25,6 @@ public class MainGUI : MonoBehaviour
     private static List<LootingLevelObject> pickupQueue = new List<LootingLevelObject>();
     private static float pickupCooldown = 0f;
     private static bool isPickingUp = false;
-    private ProtoActor selectedPlayer = null;
     private Vector2 playerScrollPosition;
 
     public static bool godModeEnabled = false;
@@ -41,7 +40,6 @@ public class MainGUI : MonoBehaviour
         demoTabs = new Tabs.TabConfig[]
         {
             new Tabs.TabConfig("Local Player", DrawLocalPlayerTab),
-            new Tabs.TabConfig("Other Players", DrawOtherPlayersTab),
             new Tabs.TabConfig("ESP", DrawESPTab),
             new Tabs.TabConfig("Inventory", DrawInventoryTab),
         };
@@ -90,15 +88,14 @@ public class MainGUI : MonoBehaviour
         guiHelper.UpdateAnimations(showDemoWindow);
         if (guiHelper.BeginAnimatedGUI())
         {
-            currentDemoTab = guiHelper.DrawTabs(
+            currentDemoTab = guiHelper.VerticalTabs(
                 demoTabs.Select(tab => tab.Name).ToArray(),
                 currentDemoTab,
                 () =>
                 {
                     scrollPosition = guiHelper.DrawScrollView(scrollPosition, DrawCurrentTabContent, GUILayout.Height(650));
                 },
-                maxLines: 2,
-                position: Tabs.TabPosition.Top
+                maxLines: 2
             );
 
             guiHelper.EndAnimatedGUI();
@@ -120,10 +117,6 @@ public class MainGUI : MonoBehaviour
     {
         guiHelper.BeginVerticalGroup(GUILayout.ExpandWidth(true));
 
-        guiHelper.Label("Local Player Cheats", LabelVariant.Default);
-        guiHelper.MutedLabel("Modify your character stats and abilities");
-        guiHelper.HorizontalSeparator();
-
         guiHelper.Label("Protection", LabelVariant.Default);
         godModeEnabled = guiHelper.Switch("God Mode", godModeEnabled);
         noFallDamageEnabled = guiHelper.Switch("No Fall Damage", noFallDamageEnabled);
@@ -136,62 +129,9 @@ public class MainGUI : MonoBehaviour
         guiHelper.Label("Utilities", LabelVariant.Default);
         if (guiHelper.Button("Max Durability", ButtonVariant.Default, ButtonSize.Small))
         {
-            MaxItemDurability(GetLocalPlayer());
+            MaxItemDurability(GameAPI.GetLocalPlayer());
         }
         guiHelper.MutedLabel("Restore all equipment durability to max");
-
-        guiHelper.EndVerticalGroup();
-    }
-
-    void DrawOtherPlayersTab() // i got no firends to test with :(
-    {
-        guiHelper.BeginVerticalGroup(GUILayout.ExpandWidth(true));
-
-        guiHelper.Label("Other Players", LabelVariant.Default);
-        guiHelper.MutedLabel("Select and modify other player stats");
-        guiHelper.HorizontalSeparator();
-
-        guiHelper.Label("Select Player", LabelVariant.Default);
-        ProtoActor[] allPlayers = GetAllPlayers();
-
-        if (allPlayers.Length > 0)
-        {
-            playerScrollPosition = guiHelper.DrawScrollView(playerScrollPosition, () =>
-            {
-                foreach (var player in allPlayers)
-                {
-                    if (player == null) continue;
-
-                    string playerName = player.gameObject.name;
-                    if (guiHelper.Button(playerName, selectedPlayer == player ? ButtonVariant.Secondary : ButtonVariant.Outline, ButtonSize.Small))
-                    {
-                        selectedPlayer = player;
-                    }
-                }
-            }, GUILayout.Height(150));
-        }
-        else
-        {
-            guiHelper.MutedLabel("No other players found");
-        }
-
-        guiHelper.HorizontalSeparator();
-
-        if (selectedPlayer != null)
-        {
-            guiHelper.Label($"Modifying: {selectedPlayer.gameObject.name}", LabelVariant.Default);
-            guiHelper.HorizontalSeparator();
-
-            guiHelper.Label("Protection", LabelVariant.Default);
-            if (guiHelper.Button("Max Durability", ButtonVariant.Default, ButtonSize.Small))
-            {
-                MaxItemDurability(selectedPlayer);
-            }
-        }
-        else
-        {
-            guiHelper.MutedLabel("Select a player to modify");
-        }
 
         guiHelper.EndVerticalGroup();
     }
@@ -274,18 +214,11 @@ public class MainGUI : MonoBehaviour
         try
         {
             pickupQueue.Clear();
-            LootingLevelObject[] allLoot = UnityEngine.Object.FindObjectsOfType<LootingLevelObject>();
+            LootingLevelObject[] allLoot = GameAPI.GetAllLoot();
 
-            foreach (var loot in allLoot)
+            if (allLoot.Length > 0)
             {
-                if (loot != null && loot.gameObject.activeInHierarchy)
-                {
-                    pickupQueue.Add(loot);
-                }
-            }
-
-            if (pickupQueue.Count > 0)
-            {
+                pickupQueue.AddRange(allLoot);
                 isPickingUp = true;
                 pickupCooldown = 0.05f;
                 Debug.Log($"Starting to pickup {pickupQueue.Count} items");
@@ -308,7 +241,7 @@ public class MainGUI : MonoBehaviour
 
         try
         {
-            ProtoActor player = GetLocalPlayer();
+            ProtoActor player = GameAPI.GetLocalPlayer();
             if (player == null)
             {
                 StopPickup();
@@ -339,47 +272,16 @@ public class MainGUI : MonoBehaviour
         Debug.Log("Pickup stopped");
     }
 
-    ProtoActor GetLocalPlayer()
-    {
-        try
-        {
-            ProtoActor[] allActors = UnityEngine.Object.FindObjectsOfType<ProtoActor>();
-            foreach (var actor in allActors)
-            {
-                if (actor != null && actor.AmIAvatar())
-                {
-                    return actor;
-                }
-            }
-        }
-        catch { }
-        return null;
-    }
-
-    ProtoActor[] GetAllPlayers()
-    {
-        try
-        {
-            ProtoActor[] allActors = UnityEngine.Object.FindObjectsOfType<ProtoActor>();
-            return allActors.Where(a => a != null && !a.AmIAvatar()).ToArray();
-        }
-        catch { }
-        return new ProtoActor[0];
-    }
-
     void MaxItemDurability(ProtoActor player)
     {
         if (player == null) return;
         try
         {
-            var inventory = ModHelper.GetFieldValue(player, "inventory");
-            if (inventory == null) return;
+            List<InventoryItem> items = GameAPI.GetInventoryItems(player);
 
-            var slotItems = ModHelper.GetFieldValue<List<InventoryItem>>(inventory, "slotItems");
-
-            if (slotItems != null)
+            if (items.Count > 0)
             {
-                foreach (var item in slotItems)
+                foreach (var item in items)
                 {
                     if (item != null)
                     {
@@ -387,16 +289,14 @@ public class MainGUI : MonoBehaviour
                         ModHelper.SetFieldValue(item, "StackCount", 999999);
                     }
                 }
+                Debug.Log($"Maxed durability for {player.gameObject.name}");
             }
-            Debug.Log($"Maxed durability for {player.gameObject.name}");
         }
         catch (Exception ex)
         {
             Debug.LogError($"MaxItemDurability error: {ex.Message}");
         }
     }
-
-
 
     void ApplyHarmonyPatches()
     {
@@ -455,51 +355,5 @@ public class MainGUI : MonoBehaviour
             return false;
         }
         return true;
-    }
-}
-
-public static class ModHelper
-{
-    private const BindingFlags DefaultFlags = BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Public | BindingFlags.Static;
-
-    public static object GetFieldValue(object target, string fieldName)
-    {
-        if (target == null) return null;
-
-        FieldInfo field = target.GetType().GetField(fieldName, DefaultFlags);
-        return field?.GetValue(target);
-    }
-
-    public static object GetFieldValue(Type type, string fieldName)
-    {
-        FieldInfo field = type.GetField(fieldName, DefaultFlags);
-        return field?.GetValue(null);
-    }
-
-    public static T GetFieldValue<T>(object target, string fieldName)
-    {
-        object value = GetFieldValue(target, fieldName);
-        return value == null ? default(T) : (T)value;
-    }
-
-    public static void SetFieldValue(object target, string fieldName, object value)
-    {
-        if (target == null) return;
-
-        FieldInfo field = target.GetType().GetField(fieldName, DefaultFlags);
-        if (field != null)
-        {
-            field.SetValue(target, value);
-        }
-    }
-
-    public static object InvokeMethod(object target, string methodName, params object[] parameters)
-    {
-        if (target == null) return null;
-
-        MethodInfo method = target.GetType().GetMethod(methodName, DefaultFlags);
-        if (method == null) return null;
-
-        return method.Invoke(target, parameters.Length > 0 ? parameters : null);
     }
 }
