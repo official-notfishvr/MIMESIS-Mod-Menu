@@ -211,6 +211,9 @@
         <Reference Include="shadcnui">
             <HintPath>Libs\shadcnui.dll</HintPath>
         </Reference>
+        <Reference Include="System.Collections.Immutable">
+            <HintPath>$(GameAssemblyPath)\System.Collections.Immutable.dll</HintPath>
+        </Reference>
         <Reference Include="Unity.AI.Navigation">
             <HintPath>$(GameAssemblyPath)\Unity.AI.Navigation.dll</HintPath>
         </Reference>
